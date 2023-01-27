@@ -1,0 +1,62 @@
+Cls
+
+<#--------------Directory information----------------------#>
+
+$Directory = "D:\Users\Administrator\Documents\Data"
+CD $Directory
+
+<#--------------Import Raw Data File----------------------#>
+$Datafile = import-csv ".\Raw_Data.csv"
+
+<#---------Designate and begin Transcript-----------------#>
+
+$LogFileName = "Log-"+(Get-Date -Format "MM_dd_yyyy_hhmm")+".txt"
+start-transcript -path ".\LogFile\$LogFileName"
+
+<#---Select 3 specific columns from Unaltered data file and format as necessary---#>
+$Datafile = $Datafile | Select  @{N='Account'; e={$_.Category}},`
+                                @{N='Amount' ; e={$_.amount.replace('(','-').replace(')','').replace('$','')}},`
+                                @{N='Date'   ; e={([datetime]$_."Posted Date").tostring('MMM-yy')}}
+
+
+<#---Get the First and last Month/Year periods present in the data file---#>
+
+$StartDate = $Datafile[-1]  | Select-Object  -ExpandProperty Date
+$EndDate =   $Datafile[0]   | Select-Object  -ExpandProperty Date
+
+<#---Export the Formmated information to a new ".CSV" File---#>
+$Datafile | export-csv ".\Data_upload.csv" -NoTypeInformation
+
+
+<#--Login to EPMAutomate, Download current metadata account members--#>
+
+epmautomate login admin epmDem0s http://eg10624.us.oracle.com:9000
+epmautomate exportmetadata Meta_Export AccountData.zip
+epmautomate downloadFile "AccountData.zip"
+&"D:\Program Files\7-Zip\7z.exe" X ".\AccountData.zip" -y -o"$Directory"
+$metaDownload = Import-CSV -path ".\admin_ExportedMetadata_Account.csv"
+
+
+
+<# Create list of Incoming Account members that don't exist in application #>
+
+$metalist = @($metaDownload | Select-Object -ExpandProperty Account -Unique)
+$newmembers = @($Datafile | Select-Object -ExpandProperty Account -Unique)
+$compare = $newmembers | Where-Object {$metalist -notcontains $_}
+
+
+if ($compare -eq $Null){ Write-Output "No Additional Dimension members need loading"}
+                  Else { Write-Output "Additional Dimension Members Detected, Updating Metadata..."
+                        $compare | select @{N= 'Account';e={$_}},@{N= 'Parent';e={"Account"}} |
+                        export-csv ".\Meta_Update.csv" -NoTypeInformation
+                        epmautomate deleteFile Meta_Update.csv
+                        epmautomate uploadfile ".\Meta_Update.csv"
+                        epmautomate importMetadata Meta_Import
+                }
+
+epmautomate deletefile inbox/Data/Data_upload.csv
+epmautomate uploadfile ".\Data_upload.csv" inbox/Data
+epmautomate runDataRule Data_Load_Rule $StartDate $EndDate REPLACE STORE_DATA Data_upload.csv
+
+epmautomate logout
+Stop-Transcript
