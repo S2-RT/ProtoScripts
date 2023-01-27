@@ -3,6 +3,10 @@ Cls
 <#--------------Directory information----------------------#>
 
 $Directory = "D:\Users\Administrator\Documents\Data"
+$ServerAddress  = "<insert server address here>"
+$ServerLogName  = "<Insert User Login Name>"
+$ServerPassword = "<Insert User Password>"
+
 CD $Directory
 
 <#--------------Import Raw Data File----------------------#>
@@ -30,7 +34,7 @@ $Datafile | export-csv ".\Data_upload.csv" -NoTypeInformation
 
 <#--Login to EPMAutomate, Download current metadata account members--#>
 
-epmautomate login admin epmDem0s http://eg10624.us.oracle.com:9000
+epmautomate login $ServerLogName $ServerPassword $ServerAddress
 epmautomate exportmetadata Meta_Export AccountData.zip
 epmautomate downloadFile "AccountData.zip"
 &"D:\Program Files\7-Zip\7z.exe" X ".\AccountData.zip" -y -o"$Directory"
@@ -54,6 +58,8 @@ if ($compare -eq $Null){ Write-Output "No Additional Dimension members need load
                         epmautomate importMetadata Meta_Import
                 }
 
+
+<# Upload and Import Data #>
 epmautomate deletefile inbox/Data/Data_upload.csv
 epmautomate uploadfile ".\Data_upload.csv" inbox/Data
 epmautomate runDataRule Data_Load_Rule $StartDate $EndDate REPLACE STORE_DATA Data_upload.csv
